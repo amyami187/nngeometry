@@ -583,9 +583,26 @@ class PMatKFAC(PMatAbstract):
                 self.evecs[layer_id] = (evecs_a, evecs_g)
         else:
             raise NotImplementedError
-
-    def get_eigendecomposition(self):
-        return self.evals, self.evecs
+            
+    def get_eig_F(self):
+        """
+        get all the eigenvalues of the KFAC approximated Fisher matrix by computing the eigenvalues of 
+        a, g for every layer and exploiting the tensor product and block diagonal structure of the approximation.
+        """
+        s = self.generator.layer_collection.numel()
+        full_ls = []
+        for layer_id, layer in self.generator.layer_collection.layers.items():
+            a, g = self.data[layer_id]
+            evals_a, _ = torch.symeig(a)
+            evals_a = torch.nan_to_num(evals_a)
+            evals_g, _ = torch.symeig(g)
+            evals_g = torch.nan_to_num(evals_g)
+            full_ls.append([np.absolute(evals_a.detach().numpy()), np.absolute(evals_g.detach().numpy())])
+        eigs = []
+        contract_tuple = lambda t: t[0] * t[1]
+        for ls in full_ls:
+            eigs += list(map(contract_tuple, product(ls[0], ls[1])))
+        return np.array(np.absolute(eigs))
 
     def mm(self, other):
         """
