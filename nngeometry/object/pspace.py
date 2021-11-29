@@ -1,8 +1,10 @@
 import torch
+import numpy as np
 from abc import ABC, abstractmethod
 from ..maths import kronecker
 from .vector import PVector
 from nngeometry.generator.dummy import DummyGenerator
+from itertools import product
 
 
 class PMatAbstract(ABC):
@@ -490,7 +492,7 @@ class PMatKFAC(PMatAbstract):
         return PVector(layer_collection=vs.layer_collection,
                        dict_repr=out_dict)
 
-    def get_dense_tensor(self, split_weight_bias=True):
+    def get_dense_tensor(self, split_weight_bias=False):
         """
         - split_weight_bias (bool): if True then the parameters are ordered in
         the same way as in the dense or blockdiag representation, but it
@@ -511,8 +513,30 @@ class PMatKFAC(PMatAbstract):
                                kronecker(g, a[-1:, -1:])], dim=1)], dim=0)
                 M[start:start+sAG, start:start+sAG].add_(reconstruct)
             else:
-                M[start:start+sAG, start:start+sAG].add_(kronecker(g, a))
+                k = kronecker(g, a)
+                M[start:start+sAG, start:start+sAG].add_(k)
         return M
+
+
+    def get_eig_F(self):
+        """
+        get all the eigenvalues of the KFAC approximated Fisher matrix by computing the eigenvalues of
+        a, g for every layer and exploiting the tensor product and block diagonal structure of the approximation.
+        """
+        s = self.generator.layer_collection.numel()
+        full_ls = []
+        for layer_id, layer in self.generator.layer_collection.layers.items():
+            a, g = self.data[layer_id]
+            evals_a, _ = torch.symeig(a)
+            evals_a = torch.nan_to_num(evals_a)
+            evals_g, _ = torch.symeig(g)
+            evals_g = torch.nan_to_num(evals_g)
+            full_ls.append([np.absolute(evals_a.detach().numpy()), np.absolute(evals_g.detach().numpy())])
+        eigs = []
+        contract_tuple = lambda t: t[0] * t[1]
+        for ls in full_ls:
+            eigs += list(map(contract_tuple, product(ls[0], ls[1])))
+        return np.array(np.absolute(eigs))
 
     def get_diag(self, split_weight_bias=True):
         """
@@ -583,26 +607,9 @@ class PMatKFAC(PMatAbstract):
                 self.evecs[layer_id] = (evecs_a, evecs_g)
         else:
             raise NotImplementedError
-            
-    def get_eig_F(self):
-        """
-        get all the eigenvalues of the KFAC approximated Fisher matrix by computing the eigenvalues of 
-        a, g for every layer and exploiting the tensor product and block diagonal structure of the approximation.
-        """
-        s = self.generator.layer_collection.numel()
-        full_ls = []
-        for layer_id, layer in self.generator.layer_collection.layers.items():
-            a, g = self.data[layer_id]
-            evals_a, _ = torch.symeig(a)
-            evals_a = torch.nan_to_num(evals_a)
-            evals_g, _ = torch.symeig(g)
-            evals_g = torch.nan_to_num(evals_g)
-            full_ls.append([np.absolute(evals_a.detach().numpy()), np.absolute(evals_g.detach().numpy())])
-        eigs = []
-        contract_tuple = lambda t: t[0] * t[1]
-        for ls in full_ls:
-            eigs += list(map(contract_tuple, product(ls[0], ls[1])))
-        return np.array(np.absolute(eigs))
+
+    def get_eigendecomposition(self):
+        return self.evals, self.evecs
 
     def mm(self, other):
         """
