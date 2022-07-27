@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from nngeometry.object.vector import PVector
+from nngeometry.nngeometry.object.vector import PVector
 
 
 def per_example_grad_conv(mod, x, gy):
