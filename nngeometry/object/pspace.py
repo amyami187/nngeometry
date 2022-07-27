@@ -44,6 +44,9 @@ class PMatAbstract(ABC):
     @abstractmethod
     def mv(self, v):
         raise NotImplementedError
+        
+    @abstractmethod
+    def get_eig_F(self):
 
     @abstractmethod
     def vTMv(self, v):
